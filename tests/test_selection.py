@@ -9,7 +9,7 @@ import pytest
 from hovertranslate import app as app_module
 from hovertranslate import clipboard_selection as clip_module
 from hovertranslate.core import Settings, UserError, load_settings, validate_settings
-from hovertranslate.selection import read_selected_text
+from hovertranslate.selection import _uia_module, read_selected_text
 from test_app import until
 
 
@@ -159,3 +159,22 @@ def test_uia_helper_exits_for_invalid_target_without_reading_selection():
     status, text = read_selected_text(-1, threading.Event(), timeout=4)
     assert status == "changed"
     assert text == ""
+
+
+def test_fresh_source_checkout_generates_uia_wrappers(monkeypatch):
+    import builtins
+    import comtypes.client
+    original_import = builtins.__import__
+    generated = object()
+    calls = []
+    def import_without_wrapper(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "comtypes.gen" and "UIAutomationClient" in fromlist:
+            raise ImportError("No generated wrapper in a fresh installation")
+        return original_import(name, globals, locals, fromlist, level)
+    def generate(name):
+        calls.append(name)
+        return generated
+    monkeypatch.setattr(builtins, "__import__", import_without_wrapper)
+    monkeypatch.setattr(comtypes.client, "GetModule", generate)
+    assert _uia_module() is generated
+    assert calls == ["UIAutomationCore.dll"]
